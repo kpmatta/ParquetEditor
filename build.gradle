@@ -1,0 +1,56 @@
+plugins {
+    id 'java'
+}
+
+group 'org.xorbit'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'scala'
+apply plugin: 'idea'
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets {
+    main {
+        scala {
+            srcDirs = ['src/main/scala', 'src/main/java']
+        }
+        java {
+            srcDirs = []
+        }
+    }
+    test {
+        scala {
+            srcDirs = ['src/test/scala', 'src/test/java']
+        }
+        java {
+            srcDirs = []
+        }
+    }
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    testCompile group: 'org.scalatest', name: 'scalatest_' + scalaMinVersion, version: '3.2.2'
+
+    compile 'org.slf4j:slf4j-api:1.7.5'
+    compile "org.scala-lang:scala-library:" + scalaVersion
+    compile "org.scala-lang:scala-compiler:" + scalaVersion
+    compileOnly ('org.apache.spark:spark-core_' + scalaMinVersion + ':' +sparkVersion )
+    compileOnly ('org.apache.spark:spark-sql_' + scalaMinVersion +  ':' +sparkVersion ) {
+        exclude group: 'org.apache.hadoop', module: "hadoop-common"
+    }
+
+    compile 'org.apache.hadoop:hadoop-common:3.1.1'
+    compile group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
+    compile group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
+
+}
+
+task run(type: JavaExec, dependsOn: classes) {
+    main = 'Main'
+    classpath sourceSets.main.runtimeClasspath
+    classpath configurations.runtime
+}
