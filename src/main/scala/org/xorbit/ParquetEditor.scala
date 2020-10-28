@@ -112,7 +112,6 @@ object ParquetEditor {
     }
   }
 
-  // TODO: Don't overwrite on exception
   def saveFile(fileName: String, fileType: String): Unit = {
     if (fileName.nonEmpty) {
       val lines = getText.split(System.lineSeparator())
@@ -123,7 +122,6 @@ object ParquetEditor {
     }
   }
 
-  // TODO: Don't overwrite on exception
   def saveAsFile(frame: JFrame, fileType: String): Unit = {
     val fileChooser = new JFileChooser(getDefaultPath)
     val option = fileChooser.showSaveDialog(frame)
