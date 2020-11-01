@@ -85,7 +85,7 @@ object ParquetEditor {
     frame.setVisible(true)
   }
 
-  def clearData() = {
+  def clearUI() = {
     setText("")
     setTitle("")
     m_textArea.setText("")
@@ -96,7 +96,8 @@ object ParquetEditor {
   }
 
   def onClose(frame: JFrame): Unit = {
-    clearData()
+    clearUI()
+    cleanUp()
   }
 
   def onExit(): Unit = {
@@ -197,7 +198,7 @@ object ParquetEditor {
     }
   }
 
-  def saveAsFile(frame: JFrame, fileType: String): Unit = {
+  def saveAsFile(frame: JFrame, fileType: String): Option[String] = {
     val fileChooser = new JFileChooser(getDefaultPath)
     val option = fileChooser.showSaveDialog(frame)
 
@@ -218,7 +219,10 @@ object ParquetEditor {
       filePathOpt = Option(fileToSave.getAbsolutePath)
       fileTypeOpt = Option(fileType)
       setTitle(fileToSave)
-      showMessageDialog(s"[${fileToSave}] File Saved !!!")
+      filePathOpt
+    }
+    else {
+      None
     }
   }
 
@@ -240,20 +244,27 @@ object ParquetEditor {
 
   def onSaveAsJson(frame: JFrame): Unit = {
     Try{
-      saveAsFile(frame, JSON_TYPE)
+      saveAsFile(frame, JSON_TYPE) match {
+        case Some(path) =>
+          showMessageDialog(s"[${path}] File Saved !!!")
+          openFile(new File(path), JSON_TYPE)
+        case None =>
+      }
       openFile(new File(filePathOpt.get), JSON_TYPE)
     } match {
       case Success(_) =>
       case Failure(ex) => showMessageDialog(ex.getMessage)
     }
-
-
   }
 
   def onSaveAsParquet(frame: JFrame): Unit = {
     Try{
-      saveAsFile(frame, PARQUET_TYPE)
-      openFile(new File(filePathOpt.get), PARQUET_TYPE)
+      saveAsFile(frame, PARQUET_TYPE) match {
+        case Some(path) =>
+          showMessageDialog(s"[${path}] File Saved !!!")
+          openFile(new File(path), PARQUET_TYPE)
+        case None =>
+      }
     } match {
       case Success(_) =>
       case Failure(ex) => showMessageDialog(ex.getMessage)
@@ -281,7 +292,7 @@ object ParquetEditor {
       browseFile(frame) match {
         case Some(path) =>
           readInputSchema(path)
-          m_textSchemaOut.setText(path)
+          m_textSchemaIn.setText(path)
         case None => showMessageDialog("File is empty")
       }
     } match {

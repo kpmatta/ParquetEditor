@@ -23,8 +23,12 @@ object ReadWriteParquet {
     .getOrCreate()
 
   Logger.getLogger("org.apache.spark").setLevel(Level.ERROR)
-
   spark.sparkContext.setLogLevel("ERROR")
+
+  def cleanUp(): Unit = {
+    schemaIn = None
+    schemaOut = None
+  }
 
   def getSchemaIn: Option[StructType] = {
     schemaIn
