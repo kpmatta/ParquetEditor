@@ -4,9 +4,10 @@ import java.io.{BufferedWriter, FileWriter}
 
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import java.io.File
+import java.nio.file.Files
 
 import org.apache.spark.sql.types.{DataType, StructType}
-import org.xorbit.utils.FileUtil
+import org.xorbit.utils.FileUtility
 import org.apache.log4j.{Level, Logger}
 
 case class Address(city: String, country: String)
@@ -19,7 +20,7 @@ object ReadWriteParquet {
   lazy val spark: SparkSession = SparkSession.builder()
     .appName("ParquetEditor")
     .master("local[1]")
-    .config("spark.sql.jsonGenerator.ignoreNullFields", false)
+    .config("spark.sql.jsonGenerator.ignoreNullFields", value = false)
     .getOrCreate()
 
   Logger.getLogger("org.apache.spark").setLevel(Level.ERROR)
@@ -69,7 +70,7 @@ object ReadWriteParquet {
 
   def readTextFile(txtFilePath : String, schema: Option[StructType]) : Array[String] = {
     if(schema.isEmpty) {
-      throw new IllegalArgumentException("Input Schema missing to load Json File")
+      throw new IllegalArgumentException("Input Schema is missing to load the Json File")
     }
     val source = scala.io.Source.fromFile(txtFilePath)
     val lines = source.getLines().toArray
@@ -79,12 +80,17 @@ object ReadWriteParquet {
 
   def writeTextFile(jsonLines: Array[String], jsonPath : String, schema: StructType):Unit = {
     if(jsonLines.isEmpty) return
-    val tmpFile = File.createTempFile("tmp", "json")
+    val tmpFile = File.createTempFile("tmp", ".json")
 
     try {
       import spark.implicits._
       val jsonDS = spark.createDataset(jsonLines)
-      val updatedJsonLines = spark.read.schema(schema).json(jsonDS).toJSON.collect()
+      val updatedJsonLines = spark.read
+        .schema(schema)
+        .option("mode", "FAILFAST")
+        .json(jsonDS)
+        .toJSON
+        .collect()
 
       val writer = new BufferedWriter(new FileWriter(tmpFile.getAbsoluteFile))
       updatedJsonLines.foreach { line =>
@@ -93,24 +99,42 @@ object ReadWriteParquet {
       }
       writer.flush()
       writer.close()
-      FileUtil.moveFile(tmpFile, new File(jsonPath))
+      FileUtility.moveFile(tmpFile.getAbsolutePath, jsonPath)
     }
     catch {
       case ex : Exception => throw ex
     }
     finally {
-      FileUtil.deleteFile(tmpFile)
+      FileUtility.deleteFile(tmpFile.getAbsolutePath)
     }
   }
 
   def writeParquetFile(jsonLines: Array[String], parquetPath: String, schema: StructType): Unit = {
     import spark.implicits._
     val jsonDS = spark.createDataset(jsonLines)
-    spark.read
-      .schema(schema)
-      .json(jsonDS)
-      .write
-      .mode(SaveMode.Overwrite)
-      .parquet(parquetPath)
+
+    val tmpFolder = Files.createTempDirectory("tmp")
+    val tmpFilePath = tmpFolder.toFile.getAbsolutePath
+
+    try {
+      val df = spark.read
+        .schema(schema)
+        .option("mode", "FAILFAST")
+        .json(jsonDS)
+
+      if (!df.isEmpty) {
+        df.write
+          .mode(SaveMode.Overwrite)
+          .parquet(tmpFilePath)
+
+        FileUtility.moveFile(tmpFilePath, parquetPath)
+      }
+    }
+    catch {
+      case ex:Exception => throw ex
+    }
+    finally {
+      FileUtility.deleteFile(tmpFilePath)
+    }
   }
 }

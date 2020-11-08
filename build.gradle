@@ -1,29 +1,21 @@
-buildscript {
-    repositories {
-        jcenter()
-    }
-    dependencies {
-        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.1'
-    }
-}
-
 plugins {
     id 'scala'
     id 'java-library'
+    id "com.github.johnrengelman.shadow" version "4.0.1"
 }
 
-
+apply plugin: 'scala'
+apply plugin: 'idea'
 apply plugin: 'java'
 apply plugin: 'com.github.johnrengelman.shadow'
 
 group 'org.xorbit'
 version '1.0-SNAPSHOT'
 
-apply plugin: 'scala'
-apply plugin: 'idea'
-
 repositories {
     jcenter()
+    mavenCentral()
+    mavenLocal()
 }
 
 sourceSets {

@@ -5,6 +5,7 @@ import java.awt.{BorderLayout, Dimension, Font}
 import java.io.{BufferedWriter, File, FileWriter}
 
 import javax.swing._
+import org.apache.spark.sql.types.StructType
 import org.xorbit.spark.ReadWriteParquet._
 //import org.xorbit.parquet_avro.PAEditor._
 import java.awt.Color
@@ -46,9 +47,9 @@ object ParquetEditor {
     m_textArea.setText("")
     m_textArea.setFont(new Font("Sans Serif", Font.PLAIN, 16))
     val schemaPanel = new JPanel()
-    schemaPanel.setLayout(new BoxLayout(schemaPanel, BoxLayout.Y_AXIS ))
-    val inPanel = new JPanel(new BorderLayout());
-    val outPanel = new JPanel(new BorderLayout());
+    schemaPanel.setLayout(new BoxLayout(schemaPanel, BoxLayout.Y_AXIS))
+    val inPanel = new JPanel(new BorderLayout())
+    val outPanel = new JPanel(new BorderLayout())
     m_textSchemaIn = new JTextField()
     m_textSchemaIn.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1))
     m_textSchemaIn.setText("")
@@ -85,7 +86,7 @@ object ParquetEditor {
     frame.setVisible(true)
   }
 
-  def clearUI() = {
+  def clearUI(): Unit = {
     setText("")
     setTitle("")
     m_textArea.setText("")
@@ -112,8 +113,41 @@ object ParquetEditor {
     setTitle(file.getName + " [" + file.getPath + "]")
   }
 
+  def showMessageDialog(message : String, ex: Throwable):Unit ={
+    val msg =
+      s"""
+         |$message
+         |${ex.getMessage}
+         |${ex.getCause.toString}
+      """.stripMargin
+
+    showMessageDialog(msg)
+  }
+
+  def showMessageDialog(ex: Throwable): Unit = {
+    val msg =
+      s"""
+        |${ex.getMessage}
+        |${ex.getCause.toString}
+      """.stripMargin
+
+    showMessageDialog(msg)
+  }
+
   def showMessageDialog(msg: String): Unit = {
-    JOptionPane.showMessageDialog(m_frame, msg)
+    val msgLines = msg.split("\\R").length
+    val paneHeight = if (msgLines < 10) msgLines * 20 else 200
+    val txtArea = new JTextArea(msg)
+    val scrollPane = new JScrollPane(txtArea)
+    scrollPane.setPreferredSize(new Dimension(620, paneHeight))
+    JOptionPane.showMessageDialog(m_frame, scrollPane)
+  }
+
+  def getParentPath: String = {
+    filePathOpt match {
+      case Some(path) => new File(path).getParent
+      case None => System.getProperty("user.dir")
+    }
   }
 
   def getDefaultPath: String = {
@@ -158,38 +192,43 @@ object ParquetEditor {
   def onOpenParquetFile(frame: JFrame): Unit = {
     Try(openFile(frame, PARQUET_TYPE)) match {
       case Success(_) =>
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+      case Failure(ex) => showMessageDialog(ex)
     }
   }
 
   def onOpenJsonFile(frame: JFrame): Unit = {
-    Try(openFile(frame, JSON_TYPE) ) match {
+    Try(openFile(frame, JSON_TYPE)) match {
       case Success(_) =>
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+      case Failure(ex) => showMessageDialog(ex)
     }
   }
 
   def onSave(): Unit = {
-    Try {
-      saveFile(filePathOpt.get, fileTypeOpt.get)
+    if (getText.trim.isEmpty)
+      return
 
-      // reload the saved file again
-      openFile(new File(filePathOpt.get), fileTypeOpt.get)
-    } match {
-      case Success(_) => showMessageDialog("File saved")
-      case Failure(exception) => showMessageDialog(s"Error Saving the file : \n ${exception.getMessage}")
+    JOptionPane.showConfirmDialog(m_frame, "Are you sure to overwrite the file?") match {
+      case 0 =>
+        Try(saveFile(filePathOpt.get, fileTypeOpt.get)) match {
+          case Success(_) =>
+            showMessageDialog("File saved")
+          case Failure(ex) =>
+            showMessageDialog("Error Saving the file", ex)
+        }
+      case _ =>
     }
+    // reload the saved file again
+    openFile(new File(filePathOpt.get), fileTypeOpt.get)
   }
 
   def saveFile(fileName: String, fileType: String): Unit = {
     if (fileName.nonEmpty) {
-
       val schema = getSchemaOut
       if (schema.isEmpty) {
-        throw new IllegalArgumentException("Schema file is missing to save file")
+        throw new IllegalArgumentException("Schema file is missing to save the file")
       }
 
-      val lines = getText.split(System.lineSeparator())
+      val lines = getText.split("\\R")
       fileType match {
         case PARQUET_TYPE => writeParquetFile(lines, fileName, schema.get)
         case JSON_TYPE => writeTextFile(lines, fileName, schema.get)
@@ -199,7 +238,7 @@ object ParquetEditor {
   }
 
   def saveAsFile(frame: JFrame, fileType: String): Option[String] = {
-    val fileChooser = new JFileChooser(getDefaultPath)
+    val fileChooser = new JFileChooser(getParentPath)
     val option = fileChooser.showSaveDialog(frame)
 
     if (option == JFileChooser.APPROVE_OPTION) {
@@ -226,68 +265,79 @@ object ParquetEditor {
     }
   }
 
-  def generateSchema(frame: JFrame): Option[String] = {
-    val schema = getSchemaIn
-    if (schema.isDefined) {
-      val fileChooser = new JFileChooser(getDefaultPath)
-      val option = fileChooser.showSaveDialog(frame)
+  def generateSchema(frame: JFrame, schema: StructType): Option[String] = {
+    val fileChooser = new JFileChooser(getParentPath)
+    val option = fileChooser.showSaveDialog(frame)
 
-      if (option == JFileChooser.APPROVE_OPTION) {
-        val schemaFile = fileChooser.getSelectedFile.getAbsolutePath + ".json"
-        writeSchema(schema.get, schemaFile)
-        Some(schemaFile)
-      }
-      else None
+    if (option == JFileChooser.APPROVE_OPTION) {
+      val schemaFile = fileChooser.getSelectedFile.getAbsolutePath + ".json"
+      writeSchema(schema, schemaFile)
+      Some(schemaFile)
     }
-    else None
+    else
+      None
   }
 
   def onSaveAsJson(frame: JFrame): Unit = {
-    Try{
-      saveAsFile(frame, JSON_TYPE) match {
-        case Some(path) =>
-          showMessageDialog(s"[${path}] File Saved !!!")
-          openFile(new File(path), JSON_TYPE)
-        case None =>
+    if (getText.trim.isEmpty)
+      return
+
+    try {
+      saveAsFile(frame, JSON_TYPE).foreach { path =>
+          showMessageDialog(s"[$path] File Saved !!!")
       }
-      openFile(new File(filePathOpt.get), JSON_TYPE)
-    } match {
-      case Success(_) =>
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+    }
+    catch {
+      case ex : Exception => showMessageDialog(ex)
+    }
+    finally {
+      openFile(new File(filePathOpt.get), fileTypeOpt.get)
     }
   }
 
   def onSaveAsParquet(frame: JFrame): Unit = {
-    Try{
-      saveAsFile(frame, PARQUET_TYPE) match {
-        case Some(path) =>
-          showMessageDialog(s"[${path}] File Saved !!!")
-          openFile(new File(path), PARQUET_TYPE)
-        case None =>
+    if (getText.trim.isEmpty)
+      return
+
+    try {
+      saveAsFile(frame, PARQUET_TYPE).foreach { path =>
+          showMessageDialog(s"[$path] File Saved !!!")
       }
-    } match {
-      case Success(_) =>
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+    }
+    catch {
+      case ex : Exception => showMessageDialog(ex)
+    }
+    finally {
+      openFile(new File(filePathOpt.get), fileTypeOpt.get)
     }
   }
 
-  def onGenerateSchema(frame: JFrame) : Unit = {
-    Try(generateSchema(frame)) match {
-      case Success(schemaFileName) => showMessageDialog(s"Schema file generated [${schemaFileName}]")
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+  def onGenerateSchema(frame: JFrame): Unit = {
+    try {
+      getSchemaIn match {
+        case Some(schema) =>
+          generateSchema(frame, schema).foreach { schemaFileName =>
+            showMessageDialog(s"Schema file is generated : $schemaFileName")
+          }
+        case None =>
+          showMessageDialog("No schema found: Load a parquet file to generate schema")
+      }
+    }
+    catch {
+      case ex:Exception => showMessageDialog(ex)
     }
   }
 
   def browseFile(frame: JFrame): Option[String] = {
     val fileChooser = new JFileChooser(getDefaultPath)
-    val option = fileChooser.showOpenDialog(frame);
+    val option = fileChooser.showOpenDialog(frame)
     if (option == JFileChooser.APPROVE_OPTION) {
       Some(fileChooser.getSelectedFile.getAbsolutePath)
     }
     else None
   }
 
-  def onLoadInputSchema(frame: JFrame) : Unit = {
+  def onLoadInputSchema(frame: JFrame): Unit = {
     Try {
       browseFile(frame) match {
         case Some(path) =>
@@ -297,11 +347,11 @@ object ParquetEditor {
       }
     } match {
       case Success(_) =>
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+      case Failure(ex) => showMessageDialog(ex)
     }
   }
 
-  def onLoadOutputSchema(frame: JFrame) : Unit = {
+  def onLoadOutputSchema(frame: JFrame): Unit = {
     Try {
       browseFile(frame) match {
         case Some(path) =>
@@ -311,7 +361,7 @@ object ParquetEditor {
       }
     } match {
       case Success(_) =>
-      case Failure(ex) => showMessageDialog(ex.getMessage)
+      case Failure(ex) => showMessageDialog(ex)
     }
   }
 

@@ -10,7 +10,7 @@ import org.apache.parquet.avro.{AvroParquetReader, AvroParquetWriter}
 import org.apache.hadoop.fs.Path
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
 import org.apache.parquet.hadoop.{ParquetFileWriter, ParquetReader, ParquetWriter}
-import org.xorbit.utils.FileUtil
+import org.xorbit.utils.FileUtility
 
 object PAEditor {
   private var schemaIn : Schema = _
@@ -47,7 +47,7 @@ object PAEditor {
     schemaOut = readSchema(schemaPath)
   }
 
-  def writeSchema(schema: Schema, filePathName : String) = {
+  def writeSchema(schema: Schema, filePathName : String): Unit = {
     val writer = new BufferedWriter(new FileWriter(filePathName))
     writer.write(schema.toString(true))
     writer.flush()
@@ -74,7 +74,7 @@ object PAEditor {
 
   def readTextFile(txtFilePath : String, schema: Schema) : Array[String] = {
     if(schema == null) {
-      throw new IllegalArgumentException("Input Schema missing to load Json File")
+      throw new IllegalArgumentException("Input Schema is missing to load the Json File")
     }
     val source = scala.io.Source.fromFile(txtFilePath)
     val lines = source.getLines().toArray
@@ -94,13 +94,13 @@ object PAEditor {
       }
       writer.flush()
       writer.close()
-      FileUtil.moveFile(tmpFile, new File(jsonPath))
+      FileUtility.moveFile(tmpFile.getAbsolutePath, jsonPath)
     }
     catch {
       case ex : Exception => throw ex
     }
     finally {
-      FileUtil.deleteFile(tmpFile)
+      FileUtility.deleteFile(tmpFile.getAbsolutePath)
     }
   }
 
@@ -128,13 +128,13 @@ object PAEditor {
         writer.write(datum)
       }
       writer.close()
-      FileUtil.moveFile(tmpFile, new File(parquetPath))
+      FileUtility.moveFile(tmpFile.getAbsolutePath, parquetPath)
     }
     catch {
       case ex : Exception => throw ex
     }
     finally {
-      FileUtil.deleteFile(tmpFile)
+      FileUtility.deleteFile(tmpFile.getAbsolutePath)
     }
   }
 }
