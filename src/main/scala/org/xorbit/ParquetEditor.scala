@@ -5,6 +5,7 @@ import java.awt.{BorderLayout, Dimension, Font}
 import java.io.{BufferedWriter, File, FileWriter}
 
 import javax.swing._
+import javax.swing.event.{CaretEvent, CaretListener}
 import org.apache.spark.sql.types.StructType
 import org.xorbit.spark.ReadWriteParquet._
 //import org.xorbit.parquet_avro.PAEditor._
@@ -21,6 +22,7 @@ object ParquetEditor {
   private var m_textSchemaOut: JTextField = _
   private var m_btnSchemaIn: JButton = _
   private var m_btnSchemaOut: JButton = _
+  private var m_selectedLine : Int = _
 
   private var filePathOpt: Option[String] = None
   private var fileTypeOpt: Option[String] = None
@@ -46,6 +48,20 @@ object ParquetEditor {
     m_textArea = new JTextArea()
     m_textArea.setText("")
     m_textArea.setFont(new Font("Sans Serif", Font.PLAIN, 16))
+
+    /*
+    m_textArea.addCaretListener(new CaretListener {
+      override def caretUpdate(e: CaretEvent): Unit = {
+        try {
+          val offset = m_textArea.getCaretPosition
+          m_selectedLine = m_textArea.getLineOfOffset(offset)
+        }
+        catch {
+          case _: Exception =>
+        }
+      }
+    })
+     */
     val schemaPanel = new JPanel()
     schemaPanel.setLayout(new BoxLayout(schemaPanel, BoxLayout.Y_AXIS))
     val inPanel = new JPanel(new BorderLayout())

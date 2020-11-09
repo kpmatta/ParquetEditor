@@ -10,9 +10,6 @@ import org.apache.spark.sql.types.{DataType, StructType}
 import org.xorbit.utils.FileUtility
 import org.apache.log4j.{Level, Logger}
 
-case class Address(city: String, country: String)
-case class Student(id: Int, name : String, grade: Int, address : Address )
-
 object ReadWriteParquet {
   private var schemaIn : Option[StructType] = None
   private var schemaOut : Option[StructType] = None

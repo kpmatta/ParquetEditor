@@ -49,9 +49,9 @@ dependencies {
         exclude group: 'org.apache.hadoop', module: "hadoop-common"
     }
 
-    compile 'org.apache.hadoop:hadoop-common:3.1.1'
-    compile group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
-    compile group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
+//    compile 'org.apache.hadoop:hadoop-common:3.1.1'
+//    compile group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
+//    compile group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
 
     testImplementation group: 'org.scalatest', name: 'scalatest_'+scalaMinVersion, version: '3.2.2'
 }
