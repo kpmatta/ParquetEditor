@@ -1,12 +1,16 @@
-plugins {
-    id 'scala'
-    id 'java-library'
-    id "com.github.johnrengelman.shadow" version "4.0.1"
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:4.0.2'
+    }
 }
 
 apply plugin: 'scala'
 apply plugin: 'idea'
-apply plugin: 'java'
+apply plugin: 'java-library'
+apply plugin: 'maven'
 apply plugin: 'com.github.johnrengelman.shadow'
 
 group 'org.xorbit'
@@ -38,28 +42,22 @@ sourceSets {
 }
 
 dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile group: 'org.scalatest', name: 'scalatest_' + scalaMinVersion, version: '3.2.2'
 
-    compile 'org.slf4j:slf4j-api:1.7.5'
     compile "org.scala-lang:scala-library:" + scalaVersion
-    compile "org.scala-lang:scala-compiler:" + scalaVersion
-    compile ('org.apache.spark:spark-core_' + scalaMinVersion + ':' +sparkVersion )
-    compile ('org.apache.spark:spark-sql_' + scalaMinVersion +  ':' +sparkVersion ) {
+    compile('org.apache.spark:spark-core_' + scalaMinVersion + ':' + sparkVersion) {
+        exclude group: 'org.slf4j'
+    }
+    compile('org.apache.spark:spark-sql_' + scalaMinVersion + ':' + sparkVersion) {
         exclude group: 'org.apache.hadoop', module: "hadoop-common"
+        exclude group: 'org.apache.hive'
+        exclude group: 'com.univocity'
+        exclude group: 'org.apache.orc'
     }
 
 //    compile 'org.apache.hadoop:hadoop-common:3.1.1'
 //    compile group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
 //    compile group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
-
-    testImplementation group: 'org.scalatest', name: 'scalatest_'+scalaMinVersion, version: '3.2.2'
-}
-
-task run(type: JavaExec, dependsOn: classes) {
-    main = 'Main'
-    classpath sourceSets.main.runtimeClasspath
-    classpath configurations.runtime
+    testCompile 'org.scalatest:scalatest_' + scalaMinVersion, ':3.2.2'
 }
 
 jar {
@@ -67,3 +65,6 @@ jar {
         attributes "Main-Class": "org.xorbit.ParquetEditor"
     }
 }
+
+jar.enabled = false
+build.dependsOn(shadowJar);
