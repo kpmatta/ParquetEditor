@@ -36,4 +36,4 @@ This is to LOAD and EDIT **SMALL** parquet files.
 * gradle clean build
 
 ### Start Application
-java -jar build/libs/ParquetEditor-1.0-SNAPSHOT-all.jar
+java -Xmx1024m -jar build/libs/ParquetEditor-1.0-SNAPSHOT-all.jar
