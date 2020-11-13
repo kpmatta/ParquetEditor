@@ -57,7 +57,7 @@ dependencies {
 //    compile 'org.apache.hadoop:hadoop-common:3.1.1'
 //    compile group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
 //    compile group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
-    testCompile 'org.scalatest:scalatest_' + scalaMinVersion, ':3.2.2'
+    testCompile group: 'org.scalatest', name: 'scalatest_2.12', version: '3.1.4'
 }
 
 jar {

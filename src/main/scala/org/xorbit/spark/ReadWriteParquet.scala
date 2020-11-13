@@ -5,6 +5,7 @@ import java.io.{BufferedWriter, FileWriter}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import java.io.File
 import java.nio.file.Files
+import org.xorbit.utils.ResourceHandler._
 
 import org.apache.spark.sql.types.{DataType, StructType}
 import org.xorbit.utils.FileUtility
@@ -16,7 +17,7 @@ object ReadWriteParquet {
 
   lazy val spark: SparkSession = SparkSession.builder()
     .appName("ParquetEditor")
-    .master("local[1]")
+    .master("local[*]")
     .config("spark.sql.jsonGenerator.ignoreNullFields", value = false)
     .getOrCreate()
 
@@ -59,20 +60,16 @@ object ReadWriteParquet {
     writer.close()
   }
 
-  def readParquetFile(parquetPath : String) : Array[String] = {
+  def readParquetFile(parquetPath : String): List[String] = {
     val df = spark.read.parquet(parquetPath)
     schemaIn = Some(df.schema)
-    df.toJSON.collect()
+    df.toJSON.collect().toList
   }
 
-  def readTextFile(txtFilePath : String, schema: Option[StructType]) : Array[String] = {
-    if(schema.isEmpty) {
-      throw new IllegalArgumentException("Input Schema is missing to load the Json File")
+  def readTextFile(txtFilePath : String): List[String] = {
+    using(scala.io.Source.fromFile(txtFilePath)) {
+      f => f.getLines().toList
     }
-    val source = scala.io.Source.fromFile(txtFilePath)
-    val lines = source.getLines().toArray
-    source.close()
-    lines
   }
 
   def writeTextFile(jsonLines: Array[String], jsonPath : String, schema: StructType):Unit = {
