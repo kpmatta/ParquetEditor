@@ -5,77 +5,60 @@ import java.io.{BufferedWriter, FileWriter}
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import java.io.File
 import java.nio.file.Files
+import org.xorbit.utils.ResourceHandler._
 
 import org.apache.spark.sql.types.{DataType, StructType}
 import org.xorbit.utils.FileUtility
 import org.apache.log4j.{Level, Logger}
 
 object ReadWriteParquet {
-  private var schemaIn : Option[StructType] = None
-  private var schemaOut : Option[StructType] = None
-
   lazy val spark: SparkSession = SparkSession.builder()
     .appName("ParquetEditor")
-    .master("local[1]")
+    .master("local[*]")
     .config("spark.sql.jsonGenerator.ignoreNullFields", value = false)
     .getOrCreate()
 
   Logger.getLogger("org.apache.spark").setLevel(Level.ERROR)
   spark.sparkContext.setLogLevel("ERROR")
 
-  def cleanUp(): Unit = {
-    schemaIn = None
-    schemaOut = None
-  }
-
-  def getSchemaIn: Option[StructType] = {
-    schemaIn
-  }
-
-  def getSchemaOut: Option[StructType] = {
-    Option(schemaOut.getOrElse(schemaIn.get))
-  }
-
   def readSchema(schemaFilePath : String): Option[StructType] = {
-    val bs = scala.io.Source.fromFile(schemaFilePath)
-    val jsonStr = bs.mkString
-    val schema = DataType.fromJson(jsonStr).asInstanceOf[StructType]
-    bs.close()
-    Option(schema)
-  }
-
-  def readInputSchema(schemaPath : String): Unit = {
-    schemaIn = readSchema(schemaPath)
-  }
-
-  def readOutputSchema(schemaPath : String) : Unit = {
-    schemaOut = readSchema(schemaPath)
+    using(scala.io.Source.fromFile(schemaFilePath)) { bs =>
+      val jsonStr = bs.mkString
+      val schema = DataType.fromJson(jsonStr).asInstanceOf[StructType]
+      Option(schema)
+    }
   }
 
   def writeSchema(schema: StructType, filePathName : String): Unit = {
-    val writer = new BufferedWriter(new FileWriter(filePathName))
-    writer.write(schema.prettyJson)
-    writer.flush()
-    writer.close()
+    val schemaLines = schema.prettyJson.split("\\R")
+    writeTextFile(schemaLines.toList, filePathName)
   }
 
-  def readParquetFile(parquetPath : String) : Array[String] = {
+  def readParquetFile(parquetPath : String): (List[String], StructType) = {
     val df = spark.read.parquet(parquetPath)
-    schemaIn = Some(df.schema)
-    df.toJSON.collect()
+    (df.toJSON.collect().toList,
+      df.schema)
   }
 
-  def readTextFile(txtFilePath : String, schema: Option[StructType]) : Array[String] = {
-    if(schema.isEmpty) {
-      throw new IllegalArgumentException("Input Schema is missing to load the Json File")
+  def readTextFile(txtFilePath : String): List[String] = {
+    using(scala.io.Source.fromFile(txtFilePath)) {
+      f => f.getLines().toList
     }
-    val source = scala.io.Source.fromFile(txtFilePath)
-    val lines = source.getLines().toArray
-    source.close()
-    lines
   }
 
-  def writeTextFile(jsonLines: Array[String], jsonPath : String, schema: StructType):Unit = {
+  def writeTextFile(lines: List[String], filePath: String): Unit = {
+    using(new BufferedWriter(new FileWriter(filePath))) { writer =>
+      lines.foreach { line =>
+        writer.write(line)
+        writer.newLine()
+      }
+      writer.flush()
+    }
+  }
+
+  def writeJsonFile(jsonLines: List[String],
+                    jsonPath : String,
+                    schema: StructType):Unit = {
     if(jsonLines.isEmpty) return
     val tmpFile = File.createTempFile("tmp", ".json")
 
@@ -85,17 +68,10 @@ object ReadWriteParquet {
       val updatedJsonLines = spark.read
         .schema(schema)
         .option("mode", "FAILFAST")
-        .json(jsonDS)
-        .toJSON
-        .collect()
+        .json(jsonDS).toJSON
+        .collect().toList
 
-      val writer = new BufferedWriter(new FileWriter(tmpFile.getAbsoluteFile))
-      updatedJsonLines.foreach { line =>
-        writer.write(line)
-        writer.newLine()
-      }
-      writer.flush()
-      writer.close()
+      writeTextFile(updatedJsonLines, tmpFile.getAbsolutePath)
       FileUtility.moveFile(tmpFile.getAbsolutePath, jsonPath)
     }
     catch {
@@ -106,10 +82,13 @@ object ReadWriteParquet {
     }
   }
 
-  def writeParquetFile(jsonLines: Array[String], parquetPath: String, schema: StructType): Unit = {
+  def writeParquetFile(jsonLines: List[String],
+                       parquetPath: String,
+                       schema: StructType): Unit = {
+    if(jsonLines.isEmpty) return
+
     import spark.implicits._
     val jsonDS = spark.createDataset(jsonLines)
-
     val tmpFolder = Files.createTempDirectory("tmp")
     val tmpFilePath = tmpFolder.toFile.getAbsolutePath
 
@@ -119,13 +98,12 @@ object ReadWriteParquet {
         .option("mode", "FAILFAST")
         .json(jsonDS)
 
-      if (!df.isEmpty) {
-        df.write
-          .mode(SaveMode.Overwrite)
-          .parquet(tmpFilePath)
+      df.repartition(1)
+        .write
+        .mode(SaveMode.Overwrite)
+        .parquet(tmpFilePath)
 
-        FileUtility.moveFile(tmpFilePath, parquetPath)
-      }
+      FileUtility.moveFile(tmpFilePath, parquetPath)
     }
     catch {
       case ex:Exception => throw ex
