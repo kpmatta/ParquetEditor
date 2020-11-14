@@ -8,7 +8,7 @@ import scala.util.Try
 
 @RunWith(classOf[JUnitRunner])
 class ResourceHandlerTest extends FunSuite  {
-  test("Test Using") {
+  test("testUsing") {
     val ret = Try {
       val lines = using(scala.io.Source.fromFile("")) {
         f => f.getLines().toList
