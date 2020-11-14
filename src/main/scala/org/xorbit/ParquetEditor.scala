@@ -1,10 +1,11 @@
 package org.xorbit
 
-import java.awt.event.{ActionEvent}
+import java.awt.event.ActionEvent
 import java.awt.{BorderLayout, Dimension, Font}
 import java.io.File
 
 import javax.swing._
+import javax.swing.text.JTextComponent
 import org.apache.spark.sql.types.StructType
 import org.xorbit.spark.ReadWriteParquet._
 //import org.xorbit.parquet_avro.PAEditor._
@@ -13,33 +14,34 @@ import java.awt.Color
 import scala.util.{Failure, Success, Try}
 
 object ParquetEditor {
-  private var m_menuBar: JMenuBar = _
-  private var m_menu: JMenu = _
   private var m_frame: JFrame = _
   private var m_textArea: JTextArea = _
   private var m_textSchemaIn: JTextField = _
   private var m_textSchemaOut: JTextField = _
-  private var m_btnSchemaIn: JButton = _
-  private var m_btnSchemaOut: JButton = _
-
+  private var inputSchema : Option[StructType] = None
+  private var outputSchema : Option[StructType] = None
   private var filePathOpt: Option[String] = None
   private var fileTypeOpt: Option[String] = None
+
   private val PARQUET_TYPE = "parquet"
   private val JSON_TYPE = "json"
 
   def main(args: Array[String]): Unit = {
-    m_frame = new JFrame("Parquet File Editor")
-
+    m_frame = new JFrame("Parquet Editor")
     createMenu(m_frame)
     createLayOut(m_frame)
   }
 
-  def setText(text: String): Unit = {
-    m_textArea.setText(text)
+  def setText(txtComp: JTextComponent, text: String): Unit = {
+    txtComp.setText(text)
   }
 
-  def getText: String = {
-    m_textArea.getText()
+  def clearText(txtComp : JTextComponent) : Unit = {
+    setText(txtComp, "")
+  }
+
+  def getText(txtComp : JTextComponent): String = {
+    txtComp.getText()
   }
 
   def createLayOut(frame: JFrame): Unit = {
@@ -57,10 +59,10 @@ object ParquetEditor {
     m_textSchemaIn.setEnabled(false)
     val lblSchemaIn = new JLabel(" Input Schema Path: ")
     lblSchemaIn.setPreferredSize(new Dimension(150, lblSchemaIn.getHeight))
-    m_btnSchemaIn = new JButton("Browse")
+    val btnSchemaIn = new JButton("Browse")
     inPanel.add(lblSchemaIn, BorderLayout.WEST)
     inPanel.add(m_textSchemaIn, BorderLayout.CENTER)
-    inPanel.add(m_btnSchemaIn, BorderLayout.EAST)
+    inPanel.add(btnSchemaIn, BorderLayout.EAST)
 
     m_textSchemaOut = new JTextField()
     m_textSchemaOut.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1))
@@ -68,16 +70,16 @@ object ParquetEditor {
     m_textSchemaOut.setEnabled(false)
     val lblSchemaOut = new JLabel(" Output Schema Path: ")
     lblSchemaOut.setPreferredSize(new Dimension(150, lblSchemaOut.getHeight))
-    m_btnSchemaOut = new JButton("Browse")
+    val btnSchemaOut = new JButton("Browse")
     outPanel.add(lblSchemaOut, BorderLayout.WEST)
     outPanel.add(m_textSchemaOut, BorderLayout.CENTER)
-    outPanel.add(m_btnSchemaOut, BorderLayout.EAST)
+    outPanel.add(btnSchemaOut, BorderLayout.EAST)
     schemaPanel.add(inPanel)
     schemaPanel.add(outPanel)
     val scrollPane = new JScrollPane(m_textArea)
 
-    m_btnSchemaOut.addActionListener((_: ActionEvent) => onLoadOutputSchema(frame))
-    m_btnSchemaIn.addActionListener((_: ActionEvent) => onLoadInputSchema(frame))
+    btnSchemaOut.addActionListener((_: ActionEvent) => onLoadOutputSchema(frame))
+    btnSchemaIn.addActionListener((_: ActionEvent) => onLoadInputSchema(frame))
 
     frame.getContentPane.add(schemaPanel, BorderLayout.NORTH)
     frame.getContentPane.add(scrollPane, BorderLayout.CENTER)
@@ -88,30 +90,32 @@ object ParquetEditor {
   }
 
   def clearUI(): Unit = {
-    setText("")
-    setTitle("")
-    m_textArea.setText("")
-    m_textSchemaIn.setText("")
-    m_textSchemaOut.setText("")
+    clearText(m_textArea)
+    setTitle(m_frame, "")
+    clearText(m_textSchemaIn)
+    clearText(m_textSchemaOut)
     filePathOpt = None
     fileTypeOpt = None
+    inputSchema = None
+    outputSchema = None
   }
 
   def onClose(frame: JFrame): Unit = {
     clearUI()
-    cleanUp()
   }
 
   def onExit(): Unit = {
     System.exit(0)
   }
 
-  def setTitle(title: String): Unit = {
-    m_frame.setTitle(title)
+  def setTitle(frame: JFrame, title: String): Unit = {
+    val titleStr = if(title.isEmpty) "Parquet Editor" else s"$title - Parquet Editor"
+    frame.setTitle(titleStr)
   }
 
-  def setTitle(file: File): Unit = {
-    setTitle(file.getName + " [" + file.getPath + "]")
+  def setPathInTitle(frame: JFrame, filePath: String): Unit = {
+    val file = new File(filePath)
+    setTitle(frame, file.getName + " [" + file.getPath + "]")
   }
 
   def showMessageDialog(message : String, ex: Throwable = null):Unit ={
@@ -150,21 +154,22 @@ object ParquetEditor {
   def openFile(file: File, fileType: String): Unit = {
     val jsonLines = fileType match {
       case JSON_TYPE =>
-        if(getSchemaIn.isEmpty) {
+        if(inputSchema.isEmpty) {
           throw new IllegalArgumentException("Input Schema is missing to load the Json File")
         }
         readTextFile(file.getAbsolutePath)
       case PARQUET_TYPE =>
-        val lines = readParquetFile(file.getAbsolutePath)
+        val (lines, schema) = readParquetFile(file.getAbsolutePath)
         m_textSchemaIn.setText("Schema inferred from parquet file")
+        inputSchema = Some(schema)
         lines
       case _ => throw new IllegalArgumentException("Unknown file type : " + fileType)
     }
 
     filePathOpt = Option(file.getAbsolutePath)
     fileTypeOpt = Option(fileType)
-    setText(jsonLines.mkString(System.lineSeparator()))
-    setTitle(file)
+    setText(m_textArea, jsonLines.mkString(System.lineSeparator()))
+    setPathInTitle(m_frame, file.getAbsolutePath)
   }
 
   def openFile(frame: JFrame, fileType: String): Unit = {
@@ -194,7 +199,7 @@ object ParquetEditor {
   }
 
   def onSave(): Unit = {
-    if (getText.trim.isEmpty)
+    if (getText(m_textArea).trim.isEmpty)
       return
 
     val retVal = JOptionPane.showConfirmDialog(m_frame, "Are you sure to overwrite the file?")
@@ -210,65 +215,60 @@ object ParquetEditor {
     openFile(new File(filePathOpt.get), fileTypeOpt.get)
   }
 
-  def saveFile(fileName: String, fileType: String): Unit = {
-    if (fileName.nonEmpty) {
-      val schema = getSchemaOut
-      if (schema.isEmpty) {
-        throw new IllegalArgumentException("Schema file is missing to save the file")
-      }
+  def getSchemaOut: Option[StructType] = {
+    Option(outputSchema.getOrElse(inputSchema.get))
+  }
 
-      val lines = getText.split("\\R")
-      fileType match {
-        case PARQUET_TYPE => writeParquetFile(lines, fileName, schema.get)
-        case JSON_TYPE => writeTextFile(lines, fileName, schema.get)
-        case _ => throw new IllegalArgumentException("Unknown file type : " + fileType)
-      }
+  def saveFile(fileName: String, fileType: String): Unit = {
+    if (fileName.isEmpty)
+      return
+
+    val schema = getSchemaOut
+    if (getSchemaOut.isEmpty) {
+      throw new IllegalArgumentException("Input or Output Schema is required to save the file")
+    }
+
+    val lines = getText(m_textArea).split("\\R").toList
+    fileType match {
+      case PARQUET_TYPE => writeParquetFile(lines, fileName, schema.get)
+      case JSON_TYPE => writeJsonFile(lines, fileName, schema.get)
+      case _ => throw new IllegalArgumentException("Unknown file type : " + fileType)
     }
   }
 
   def saveAsFile(frame: JFrame, fileType: String): Option[String] = {
     val fileChooser = new JFileChooser(getParentPath)
-    val option = fileChooser.showSaveDialog(frame)
-
-    if (option == JFileChooser.APPROVE_OPTION) {
-      val fileToSave = if(fileType.equals(JSON_TYPE)) {
-        if (fileChooser.getSelectedFile.getName.endsWith(fileType)) {
-          fileChooser.getSelectedFile
+    fileChooser.showSaveDialog(frame) match {
+      case JFileChooser.APPROVE_OPTION =>
+        val fileToSave = fileType match {
+          case JSON_TYPE => fileChooser.getSelectedFile.getAbsolutePath.stripSuffix(".json") + ".json"
+          case _ => fileChooser.getSelectedFile.getAbsolutePath
         }
-        else {
-          new File(fileChooser.getSelectedFile.getAbsolutePath + "." + fileType)
-        }
-      }
-      else {
-        fileChooser.getSelectedFile
-      }
 
-      saveFile(fileToSave.getAbsolutePath, fileType)
-      filePathOpt = Option(fileToSave.getAbsolutePath)
-      fileTypeOpt = Option(fileType)
-      setTitle(fileToSave)
-      filePathOpt
-    }
-    else {
-      None
+        saveFile(fileToSave, fileType)
+        filePathOpt = Option(fileToSave)
+        fileTypeOpt = Option(fileType)
+        setPathInTitle(m_frame, fileToSave)
+        filePathOpt
+      case _ => None
     }
   }
 
   def generateSchema(frame: JFrame, schema: StructType): Option[String] = {
     val fileChooser = new JFileChooser(getParentPath)
-    val option = fileChooser.showSaveDialog(frame)
-
-    if (option == JFileChooser.APPROVE_OPTION) {
-      val schemaFile = fileChooser.getSelectedFile.getAbsolutePath + ".json"
-      writeSchema(schema, schemaFile)
-      Some(schemaFile)
+    fileChooser.showSaveDialog(frame) match {
+      case JFileChooser.APPROVE_OPTION =>
+        val schemaFile = fileChooser
+          .getSelectedFile
+          .getAbsolutePath.stripSuffix(".json") + ".json"
+        writeSchema(schema, schemaFile)
+        Some(schemaFile)
+      case _ => None
     }
-    else
-      None
   }
 
   def onSaveAsJson(frame: JFrame): Unit = {
-    if (getText.trim.isEmpty)
+    if (getText(m_textArea).trim.isEmpty)
       return
 
     Try( saveAsFile(frame, JSON_TYPE) )match {
@@ -281,7 +281,7 @@ object ParquetEditor {
   }
 
   def onSaveAsParquet(frame: JFrame): Unit = {
-    if (getText.trim.isEmpty)
+    if (getText(m_textArea).trim.isEmpty)
       return
 
     Try(saveAsFile(frame, PARQUET_TYPE)) match {
@@ -294,7 +294,7 @@ object ParquetEditor {
   }
 
   def onGenerateSchema(frame: JFrame): Unit = {
-    getSchemaIn match {
+    inputSchema match {
       case Some(schema) =>
         Try(generateSchema(frame, schema)) match {
           case Success(Some(schemaFileName)) => showMessageDialog(s"Schema file is generated : $schemaFileName")
@@ -308,34 +308,43 @@ object ParquetEditor {
 
   def browseFile(frame: JFrame): Option[String] = {
     val fileChooser = new JFileChooser(getDefaultPath)
-    val option = fileChooser.showOpenDialog(frame)
-    if (option == JFileChooser.APPROVE_OPTION) {
-      Some(fileChooser.getSelectedFile.getAbsolutePath)
+    fileChooser.showOpenDialog(frame) match {
+      case JFileChooser.APPROVE_OPTION => Some(fileChooser.getSelectedFile.getAbsolutePath)
+      case _ => None
     }
-    else None
   }
 
-  def onLoadSchema(frame: JFrame, txtField: JTextField): Unit = {
-    Try(browseFile(frame)) match {
-      case Success(Some(path)) =>
-        readInputSchema(path)
-        txtField.setText(path)
-      case Success(None) => showMessageDialog("File is empty")
-      case Failure(ex) => showMessageDialog("Error loading the schema", ex)
+  def onLoadSchema(frame: JFrame): (Option[StructType], Option[String]) = {
+    browseFile(frame) match {
+      case Some(path) =>
+        Try(readSchema(path)) match {
+          case Success(Some(schema)) => (Option(schema), Option(path))
+          case Success(None) =>
+            showMessageDialog("File is empty")
+            (None, None)
+          case Failure(ex) =>
+            showMessageDialog("Error loading the schema", ex)
+            (None, None)
+        }
+      case _ => (None, None)
     }
   }
 
   def onLoadInputSchema(frame: JFrame): Unit = {
-    onLoadSchema(frame, m_textSchemaIn)
+    val (schema, pathOpt) = onLoadSchema(frame)
+    inputSchema = schema
+    pathOpt.foreach( setText(m_textSchemaIn, _) )
   }
 
   def onLoadOutputSchema(frame: JFrame): Unit = {
-    onLoadSchema(frame, m_textSchemaOut)
+    val (schema, pathOpt) = onLoadSchema(frame)
+    outputSchema = schema
+    pathOpt.foreach( setText(m_textSchemaOut, _) )
   }
 
   def createMenu(frame: JFrame): Unit = {
-    m_menuBar = new JMenuBar()
-    m_menu = new JMenu("File")
+    val menuBar = new JMenuBar()
+    val menu = new JMenu("File")
     val miOpenParquet = new JMenuItem("Open Parquet")
     val miOpenJson = new JMenuItem("Open Json")
     val miSave = new JMenuItem("Save")
@@ -354,15 +363,15 @@ object ParquetEditor {
     miSaveAsJson.addActionListener((_: ActionEvent) => onSaveAsJson(frame))
     miSaveSchema.addActionListener((_: ActionEvent) => onGenerateSchema(frame))
 
-    m_menu.add(miOpenParquet)
-    m_menu.add(miOpenJson)
-    m_menu.add(miSave)
-    m_menu.add(miSaveAsParquet)
-    m_menu.add(miSaveAsJson)
-    m_menu.add(miSaveSchema)
-    m_menu.add(miClose)
-    m_menu.add(miExit)
-    m_menuBar.add(m_menu)
-    frame.setJMenuBar(m_menuBar)
+    menu.add(miOpenParquet)
+    menu.add(miOpenJson)
+    menu.add(miSave)
+    menu.add(miSaveAsParquet)
+    menu.add(miSaveAsJson)
+    menu.add(miSaveSchema)
+    menu.add(miClose)
+    menu.add(miExit)
+    menuBar.add(menu)
+    frame.setJMenuBar(menuBar)
   }
 }
