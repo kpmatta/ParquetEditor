@@ -1,6 +1,5 @@
 package org.xorbit.parquet_avro
 
-/*
 import java.io.{BufferedWriter, ByteArrayInputStream, DataInputStream, File, FileWriter, InputStream}
 
 import org.apache.arrow.vector.ipc.JsonFileReader
@@ -139,5 +138,3 @@ object PAEditor {
     }
   }
 }
-
- */

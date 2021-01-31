@@ -35,9 +35,9 @@ dependencies {
         exclude group: 'org.apache.orc'
     }
 
-//    compile 'org.apache.hadoop:hadoop-common:3.1.1'
-//    compile group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
-//    compile group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
+    compileOnly 'org.apache.hadoop:hadoop-common:3.1.1'
+    compileOnly group: 'org.kitesdk', name: 'kite-data-core', version: '1.1.0'
+    compileOnly group: 'org.apache.parquet', name: 'parquet-avro', version: '1.9.0'
 
     testCompile 'junit:junit:4.12'
     testCompile 'org.scalatest:scalatest_2.12:3.0.5'

@@ -7,6 +7,7 @@ import java.io.File
 import javax.swing._
 import javax.swing.text.JTextComponent
 import org.apache.spark.sql.types.StructType
+import org.xorbit.ParquetEditor.saveFile
 import org.xorbit.spark.ReadWriteParquet._
 //import org.xorbit.parquet_avro.PAEditor._
 import java.awt.Color
@@ -34,6 +35,7 @@ object ParquetEditor {
 
   def setText(txtComp: JTextComponent, text: String): Unit = {
     txtComp.setText(text)
+    txtComp.setCaretPosition(0)
   }
 
   def clearText(txtComp : JTextComponent) : Unit = {
@@ -52,39 +54,21 @@ object ParquetEditor {
     val schemaPanel = new JPanel()
     schemaPanel.setLayout(new BoxLayout(schemaPanel, BoxLayout.Y_AXIS))
     val inPanel = new JPanel(new BorderLayout())
-    val outPanel = new JPanel(new BorderLayout())
     m_textSchemaIn = new JTextField()
     m_textSchemaIn.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1))
     m_textSchemaIn.setText("")
     m_textSchemaIn.setEnabled(false)
     val lblSchemaIn = new JLabel(" Input Schema Path: ")
     lblSchemaIn.setPreferredSize(new Dimension(150, lblSchemaIn.getHeight))
-    val btnSchemaIn = new JButton("Browse")
     inPanel.add(lblSchemaIn, BorderLayout.WEST)
     inPanel.add(m_textSchemaIn, BorderLayout.CENTER)
-    inPanel.add(btnSchemaIn, BorderLayout.EAST)
-
-    m_textSchemaOut = new JTextField()
-    m_textSchemaOut.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1))
-    m_textSchemaOut.setText("")
-    m_textSchemaOut.setEnabled(false)
-    val lblSchemaOut = new JLabel(" Output Schema Path: ")
-    lblSchemaOut.setPreferredSize(new Dimension(150, lblSchemaOut.getHeight))
-    val btnSchemaOut = new JButton("Browse")
-    outPanel.add(lblSchemaOut, BorderLayout.WEST)
-    outPanel.add(m_textSchemaOut, BorderLayout.CENTER)
-    outPanel.add(btnSchemaOut, BorderLayout.EAST)
     schemaPanel.add(inPanel)
-    schemaPanel.add(outPanel)
+
     val scrollPane = new JScrollPane(m_textArea)
-
-    btnSchemaOut.addActionListener((_: ActionEvent) => onLoadOutputSchema(frame))
-    btnSchemaIn.addActionListener((_: ActionEvent) => onLoadInputSchema(frame))
-
     frame.getContentPane.add(schemaPanel, BorderLayout.NORTH)
     frame.getContentPane.add(scrollPane, BorderLayout.CENTER)
     frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
-    frame.setSize(new Dimension(1000, 800))
+    frame.setSize(new Dimension(1400, 800))
     frame.setLocationRelativeTo(null)
     frame.setVisible(true)
   }
@@ -130,7 +114,10 @@ object ParquetEditor {
 
   def showMessageDialog(msg: String): Unit = {
     val msgLines = msg.split("\\R").length
-    val paneHeight = if (msgLines < 10) msgLines * 20 else 200
+    val scrollHeight = 20
+    val lineHeight = 20
+    val maxHeight = 200
+    val paneHeight = math.min(msgLines * lineHeight, maxHeight) + scrollHeight
     val txtArea = new JTextArea(msg)
     val scrollPane = new JScrollPane(txtArea)
     scrollPane.setPreferredSize(new Dimension(620, paneHeight))
@@ -199,27 +186,27 @@ object ParquetEditor {
   }
 
   def onSave(): Unit = {
-    if (getText(m_textArea).trim.isEmpty)
-      return
-
-    val retVal = JOptionPane.showConfirmDialog(m_frame, "Are you sure to overwrite the file?")
-    if(retVal == 0) {
-      Try(saveFile(filePathOpt.get, fileTypeOpt.get)) match {
-        case Success(_) =>
-          showMessageDialog("File saved")
-        case Failure(ex) =>
-          showMessageDialog("Error Saving the file", ex)
+    Option (getText(m_textArea)).filter(_.trim.nonEmpty).foreach { data =>
+      val retVal = JOptionPane.showConfirmDialog(m_frame, "Are you sure to overwrite the file?")
+      if (retVal == 0) {
+        val lines = data.split("\\R").toList
+        Try(saveFile(lines, filePathOpt.get, fileTypeOpt.get)) match {
+          case Success(_) =>
+            showMessageDialog("File saved")
+          case Failure(ex) =>
+            showMessageDialog("Error Saving the file", ex)
+        }
       }
+      // reload the saved file again
+      openFile(new File(filePathOpt.get), fileTypeOpt.get)
     }
-    // reload the saved file again
-    openFile(new File(filePathOpt.get), fileTypeOpt.get)
   }
 
   def getSchemaOut: Option[StructType] = {
     Option(outputSchema.getOrElse(inputSchema.get))
   }
 
-  def saveFile(fileName: String, fileType: String): Unit = {
+  def saveFile(lines: List[String], fileName: String, fileType: String): Unit = {
     if (fileName.isEmpty)
       return
 
@@ -228,7 +215,6 @@ object ParquetEditor {
       throw new IllegalArgumentException("Input or Output Schema is required to save the file")
     }
 
-    val lines = getText(m_textArea).split("\\R").toList
     fileType match {
       case PARQUET_TYPE => writeParquetFile(lines, fileName, schema.get)
       case JSON_TYPE => writeJsonFile(lines, fileName, schema.get)
@@ -236,7 +222,7 @@ object ParquetEditor {
     }
   }
 
-  def saveAsFile(frame: JFrame, fileType: String): Option[String] = {
+  def saveAsFile(frame: JFrame, lines: List[String], fileType: String): Option[String] = {
     val fileChooser = new JFileChooser(getParentPath)
     fileChooser.showSaveDialog(frame) match {
       case JFileChooser.APPROVE_OPTION =>
@@ -245,7 +231,7 @@ object ParquetEditor {
           case _ => fileChooser.getSelectedFile.getAbsolutePath
         }
 
-        saveFile(fileToSave, fileType)
+        saveFile(lines, fileToSave, fileType)
         filePathOpt = Option(fileToSave)
         fileTypeOpt = Option(fileType)
         setPathInTitle(m_frame, fileToSave)
@@ -268,29 +254,27 @@ object ParquetEditor {
   }
 
   def onSaveAsJson(frame: JFrame): Unit = {
-    if (getText(m_textArea).trim.isEmpty)
-      return
+    Option (getText(m_textArea)).filter(_.trim.nonEmpty).foreach { data =>
+      val lines = data.split("\\R").toList
+      Try( saveAsFile(frame, lines, JSON_TYPE) )match {
+        case Success(pathOpt) => pathOpt.foreach( path => showMessageDialog(s"[$path] File Saved !!!"))
+        case Failure(ex) => showMessageDialog("Error saving Json file", ex)
+      }
 
-    Try( saveAsFile(frame, JSON_TYPE) )match {
-      case Success(Some(path)) => showMessageDialog(s"[$path] File Saved !!!")
-      case Failure(ex) => showMessageDialog("Error saving Json file", ex)
-      case _ =>
+      openFile(new File(filePathOpt.get), fileTypeOpt.get)
     }
-
-    openFile(new File(filePathOpt.get), fileTypeOpt.get)
   }
 
   def onSaveAsParquet(frame: JFrame): Unit = {
-    if (getText(m_textArea).trim.isEmpty)
-      return
+    Option (getText(m_textArea)).filter(_.trim.nonEmpty).foreach { data =>
+      val lines = data.split("\\R").toList
+      Try(saveAsFile(frame, lines, PARQUET_TYPE)) match {
+        case Success(pathOpt) => pathOpt.foreach( path => showMessageDialog(s"[$path] File Saved !!!"))
+        case Failure(ex) => showMessageDialog("Error saving Parquet file", ex)
+      }
 
-    Try(saveAsFile(frame, PARQUET_TYPE)) match {
-      case Success(Some(path)) => showMessageDialog(s"[$path] File Saved !!!")
-      case Failure(ex) => showMessageDialog("Error saving Parquet file", ex)
-      case _ =>
+      openFile(new File(filePathOpt.get), fileTypeOpt.get)
     }
-
-    openFile(new File(filePathOpt.get), fileTypeOpt.get)
   }
 
   def onGenerateSchema(frame: JFrame): Unit = {
@@ -318,10 +302,7 @@ object ParquetEditor {
     browseFile(frame) match {
       case Some(path) =>
         Try(readSchema(path)) match {
-          case Success(Some(schema)) => (Option(schema), Option(path))
-          case Success(None) =>
-            showMessageDialog("File is empty")
-            (None, None)
+          case Success(schema) => (Option(schema), Option(path))
           case Failure(ex) =>
             showMessageDialog("Error loading the schema", ex)
             (None, None)
@@ -350,6 +331,7 @@ object ParquetEditor {
     val miSave = new JMenuItem("Save")
     val miSaveAsParquet = new JMenuItem("Save As Parquet")
     val miSaveAsJson = new JMenuItem("Save As Json")
+    val miOpenSchema = new JMenuItem("Open Schema")
     val miSaveSchema = new JMenuItem("Generate Schema")
     val miClose = new JMenuItem("Close")
     val miExit = new JMenuItem("Exit")
@@ -361,6 +343,7 @@ object ParquetEditor {
     miSave.addActionListener((_: ActionEvent) => onSave())
     miSaveAsParquet.addActionListener((_: ActionEvent) => onSaveAsParquet(frame))
     miSaveAsJson.addActionListener((_: ActionEvent) => onSaveAsJson(frame))
+    miOpenSchema.addActionListener((_: ActionEvent) => onLoadInputSchema(frame))
     miSaveSchema.addActionListener((_: ActionEvent) => onGenerateSchema(frame))
 
     menu.add(miOpenParquet)
@@ -368,6 +351,7 @@ object ParquetEditor {
     menu.add(miSave)
     menu.add(miSaveAsParquet)
     menu.add(miSaveAsJson)
+    menu.add(miOpenSchema)
     menu.add(miSaveSchema)
     menu.add(miClose)
     menu.add(miExit)
